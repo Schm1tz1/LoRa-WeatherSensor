@@ -14,22 +14,31 @@
 //866000000 for Europe
 //915000000 for North America
 #define LORA_BAND 866000000
-#define SLEEP_IN_US 5000000
 
-RTC_DATA_ATTR long globalCounter=1;
+// for now: measure and transmit every 5 minutes
+#define SLEEP_IN_US 300000000
 
+RTC_DATA_ATTR long globalCounter = 1;
+
+/*
+ * Very basic LoRa initialization.
+ * syncWord and spreadingFactor are currently unused but might be interesting parameters to tune/optimize your setup.
+ */
 void initLoRa() {
     LoRa.setPins(TTGO_PIN_NSS, TTGO_PIN_RST, TTGO_PIN_DIO0); // set CS, reset, IRQ pin
 
     if (!LoRa.begin(LORA_BAND)) {         // initialize ratio at 915 MHz
         Serial.println("LoRa init failed. Check your connections.");
-        while(true);                   // if failed, do nothing
-        while(true);                   // if failed, do nothing
+        while (true);                   // if failed, do nothing
     }
     //LoRa.setSyncWord(0xF3);           // ranges from 0-0xFF, default 0x34, see API docs
     //LoRa.setSpreadingFactor(8);           // ranges from 6-12,default 7 see API docs
 }
 
+/*
+ * Currently only for testing - print the wakeup reason to serial.
+ * Can be used to handle special wakeup causes depending on your application.
+ */
 void print_wakeup_reason() {
     esp_sleep_wakeup_cause_t wakeup_reason;
 
@@ -57,12 +66,15 @@ void print_wakeup_reason() {
     }
 }
 
+/*
+ * Performs sensor initialization and performs a single measurement. We do not use the global sensor-variable because of sleep mode.
+ */
 weatherData readSensor(uint8_t bmeAddress = 0x76) {
     Adafruit_BME280 bme; // I2C
 
     if (!bme.begin(bmeAddress)) {
         Serial.println("Could not find a valid BME280 sensor, check wiring!");
-        while(true);
+        while (true);
     }
 
     weatherData measurement;
@@ -73,6 +85,9 @@ weatherData readSensor(uint8_t bmeAddress = 0x76) {
     return measurement;
 }
 
+/*
+ * Prints measurements to serial
+ */
 void printValues(weatherData dataToPrint) {
     Serial.print("Temperature = ");
     Serial.print(dataToPrint.temperature);
@@ -89,21 +104,31 @@ void printValues(weatherData dataToPrint) {
     Serial.println();
 }
 
+/*
+ * Transmits our data as a "well readable" LoRa-Packet.
+ */
 void transmitMeasurement(weatherData dataToPrint) {
     Serial.print("Sending LoRa packet...");
 
+    /*
+    * Floats of our measurements with 1/2 digits after separator should be perfect, higher accuracy of the chip is not possible
+    * The separators are not needed for LoRa. I added them here for better readability if testing with a simple LoRa receiver.
+    */
     LoRa.beginPacket();
     LoRa.print(globalCounter);
-    LoRa.print(0x20);
-    LoRa.print(dataToPrint.temperature);
-    LoRa.print(0x20);
-    LoRa.print(dataToPrint.pressure);
-    LoRa.print(0x20);
-    LoRa.print(dataToPrint.humidity);
+    LoRa.print(',');
+    LoRa.print(dataToPrint.temperature, 1);
+    LoRa.print(',');
+    LoRa.print(dataToPrint.pressure, 2);
+    LoRa.print(',');
+    LoRa.print(dataToPrint.humidity, 1);
     LoRa.endPacket();
     globalCounter++;
 }
 
+/*
+ * Typical Arduino setup-function. This is where our main code runs! After a wakeup we run into setup, execute our code and go to sleep again.
+ */
 void setup() {
     Serial.begin(SERIAL_BAUD);
     delay(100);
@@ -114,12 +139,20 @@ void setup() {
     printValues(newValues);
 
     initLoRa();
+
+    //print values (for testing/debugging)
+    printValues(newValues);
+
+    //send values over LoRa
     transmitMeasurement(newValues);
 
     Serial.println("Going to sleep.");
     esp_deep_sleep(SLEEP_IN_US);
 }
 
+/*
+ * Typical Arduino loop-function. This is never reached as after a wakeup we run into setup,execute our code and go to sleep again.
+ */
 void loop() {
     // this is never reached
 }
