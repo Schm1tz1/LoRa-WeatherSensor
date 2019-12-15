@@ -16,9 +16,8 @@
 #define LORA_BAND 866000000
 
 // for now: measure and transmit every 5 minutes
-#define SLEEP_IN_US 300000000
-
-RTC_DATA_ATTR long globalCounter = 1;
+#define uS_TO_S_FACTOR 1000000
+#define SLEEP_SECONDS 300
 
 /*
  * Very basic LoRa initialization.
@@ -31,8 +30,10 @@ void initLoRa() {
         Serial.println("LoRa init failed. Check your connections.");
         while (true);                   // if failed, do nothing
     }
-    //LoRa.setSyncWord(0xF3);           // ranges from 0-0xFF, default 0x34, see API docs
-    //LoRa.setSpreadingFactor(8);           // ranges from 6-12,default 7 see API docs
+
+//    LoRa.setTxPower(12);                // explicitly set higher Tx power if needed
+//    LoRa.setSyncWord(0xF3);             // ranges from 0-0xFF, default 0x34, see API docs
+//    LoRa.setSpreadingFactor(8);         // ranges from 6-12,default 7 see API docs
 }
 
 /*
@@ -115,15 +116,27 @@ void transmitMeasurement(weatherData dataToPrint) {
     * The separators are not needed for LoRa. I added them here for better readability if testing with a simple LoRa receiver.
     */
     LoRa.beginPacket();
-    LoRa.print(globalCounter);
-    LoRa.print(',');
+//    LoRa.print(globalCounter);
+//    LoRa.print(',');
     LoRa.print(dataToPrint.temperature, 1);
     LoRa.print(',');
     LoRa.print(dataToPrint.pressure, 2);
     LoRa.print(',');
     LoRa.print(dataToPrint.humidity, 1);
     LoRa.endPacket();
-    globalCounter++;
+
+}
+
+/**
+ * there is no official hibernate-function yet for ESP32 but according to the documentation this should have the same effect.
+ */
+void hibernateMode(uint64_t time_in_us) {
+    esp_sleep_enable_timer_wakeup(time_in_us);
+    esp_sleep_pd_config(ESP_PD_DOMAIN_MAX, ESP_PD_OPTION_OFF);
+    esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_OFF);
+    esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_SLOW_MEM, ESP_PD_OPTION_OFF);
+    esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_FAST_MEM, ESP_PD_OPTION_OFF);
+    esp_deep_sleep_start();
 }
 
 /*
@@ -146,8 +159,11 @@ void setup() {
     //send values over LoRa
     transmitMeasurement(newValues);
 
+    // this calls a LoRa.sleep() and powers off the SPI pins - should save some power
+    LoRa.end();
+
     Serial.println("Going to sleep.");
-    esp_deep_sleep(SLEEP_IN_US);
+    hibernateMode(SLEEP_SECONDS * uS_TO_S_FACTOR);
 }
 
 /*
