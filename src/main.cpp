@@ -31,7 +31,7 @@ void initLoRa() {
         while (true);                   // if failed, do nothing
     }
 
-//    LoRa.setTxPower(12);                // explicitly set higher Tx power if needed
+//    LoRa.setTxPower(12);                // default is 17, set to 20 for high power output or reduce depending on your range
 //    LoRa.setSyncWord(0xF3);             // ranges from 0-0xFF, default 0x34, see API docs
 //    LoRa.setSpreadingFactor(8);         // ranges from 6-12,default 7 see API docs
 }
